@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Campus Assignment Hub — Modern</title>
+  <meta name="description" content="Campus students: upload and download assignments (works with localStorage or Firebase).">
+  <style>
+    /* Simple, pleasant styling (no external libs) */
+    :root{
+      --bg:#f4f6fb; --card:#ffffff; --muted:#6b7280; --accent:#2b3a67; --accent-2:#5c6bc0;
+    }
+    [data-theme="dark"]{ --bg:#0b1220; --card:#0f1724; --muted:#9aa4b2; --accent:#7c9cff; --accent-2:#6b8cff; color: #e6eefc }
+    *{box-sizing:border-box}
+    body{font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Arial; margin:0; background:var(--bg); color:inherit}
+    .wrap{max-width:980px;margin:28px auto;padding:18px}
+    header{display:flex;gap:12px;align-items:center;justify-content:space-between}
+    header h1{margin:0;font-size:20px}
+    .controls{display:flex;gap:8px;align-items:center}
+    .card{background:var(--card);padding:18px;border-radius:12px;box-shadow:0 6px 22px rgba(2,6,23,0.06);margin-top:16px}
+    input,select,button,textarea{padding:10px;border-radius:8px;border:1px solid rgba(0,0,0,0.08);width:100%}
+    .grid{display:grid;grid-template-columns:1fr 380px;gap:18px}
+    .assignment{padding:12px;border-radius:8px;background:linear-gradient(180deg, rgba(0,0,0,0.02), transparent);display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .meta{font-size:13px;color:var(--muted)}
+    .badge{background:var(--accent-2);color:white;padding:6px 10px;border-radius:999px;font-size:12px}
+    .list{display:flex;flex-direction:column;gap:10px}
+    .small{font-size:13px;color:var(--muted)}
+    .row{display:flex;gap:8px}
+    .search{display:flex;gap:8px}
+    .hide{display:none}
+    footer{margin-top:16px;text-align:center;color:var(--muted);font-size:13px}
+    @media (max-width:880px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap" id="app" data-theme="light">
+    <header>
+      <div>
+        <h1>Campus Assignment Hub</h1>
+        <div class="small">Share & download assignments — for Campus students</div>
+      </div>
+
+      <div class="controls">
+        <button id="toggleTheme">Dark</button>
+        <button id="btnLogin">Login / Signup</button>
+        <select id="modeSelect" title="Storage mode" style="padding:8px;border-radius:8px">
+          <option value="local">Quick (localStorage)</option>
+          <option value="firebase">Cloud (Firebase Storage + Auth)</option>
+        </select>
+      </div>
+    </header>
+
+    <div class="grid">
+      <div>
+        <div class="card">
+          <h3>Upload Assignment</h3>
+          <div class="small">Choose mode at top. In <strong>Cloud</strong> mode you must configure Firebase (instructions included).</div>
+
+          <div style="margin-top:12px">
+            <label class="small">Your name</label>
+            <input id="name" placeholder="Your name (e.g. Jay Patel)" />
+
+            <label class="small">Subject</label>
+            <input id="subjectInput" placeholder="Subject (eg. Digital Logic)" />
+
+            <label class="small">Description (optional)</label>
+            <input id="desc" placeholder="Short description" />
+
+            <label class="small">File</label>
+            <input type="file" id="fileInput" />
+
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button id="uploadBtn">Upload</button>
+              <button id="clearBtn">Clear local</button>
+            </div>
+
+            <div id="uploadProgress" class="small" style="margin-top:8px"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <h3 style="margin:0">All Assignments</h3>
+            <div class="row">
+              <input id="search" placeholder="Search by name / subject" style="width:220px" />
+              <select id="filterSubject"><option value="all">All subjects</option></select>
+            </div>
+          </div>
+
+          <div id="list" class="list" style="margin-top:12px"></div>
+        </div>
+
+      </div>
+
+      <aside>
+        <div class="card">
+          <h3>Instructions</h3>
+          <ul class="small">
+            <li>Start with mode <strong>Quick (localStorage)</strong> to test locally — files are stored in browser and will not be publicly available.</li>
+            <li>Switch to <strong>Cloud (Firebase)</strong> to enable login + file uploads to Firebase Storage (requires Firebase project & config).</li>
+            <li>Use hosting steps (GitHub Pages / Netlify / Vercel) to make site live — see hosting guide in the chat next to this code.</li>
+          </ul>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h3>Account</h3>
+          <div id="accountBox">
+            <div class="small">Not logged in</div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h3>Advanced</h3>
+          <div class="small">This app supports 2 modes:
+            <ol>
+              <li><strong>Local (default)</strong> — fastest for testing & hosting on GitHub Pages.</li>
+              <li><strong>Firebase</strong> — real users, storage, and security.</li>
+            </ol>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <footer class="small">Made for Campus students • Files are moderated by uploader — use responsibly</footer>
+  </div>
+
+  <script>
+    /******************************************************************
+     * This single-file app supports BOTH:
+     * - localStorage-only (no backend) for quick testing & GitHub Pages
+     * - Firebase (Auth + Storage) when you paste your Firebase config below
+     *
+     * If you want cloud uploads + real login: create Firebase project,
+     * enable Email/Password Auth + Cloud Storage, then paste config.
+     * See the chat for hosting + Firebase docs links.
+     ******************************************************************/
+
+    // ---------- CONFIG: paste your Firebase config inside firebaseConfig variable ----------
+    // If you leave it null the app will use localStorage mode for file storage.
+    const firebaseConfig = null;
+    // Example (DO NOT COMMIT real keys in public repos):
+    // const firebaseConfig = {
+    //   apiKey: "...",
+    //   authDomain: "your-project.firebaseapp.com",
+    //   projectId: "your-project-id",
+    //   storageBucket: "your-project-id.appspot.com",
+    //   messagingSenderId: "...",
+    //   appId: "..."
+    // };
+
+    // ---------- small helpers ----------
+    const $ = id => document.getElementById(id);
+    const app = document.getElementById('app');
+    let useFirebase = false;
+    let firebaseApp=null, firebaseAuth=null, firebaseStorage=null;
+
+    // Theme toggle
+    const themeBtn = $('toggleTheme');
+    themeBtn.addEventListener('click', ()=>{
+      const cur = app.getAttribute('data-theme');
+      const next = cur==='light' ? 'dark' : 'light';
+      app.setAttribute('data-theme', next);
+      themeBtn.textContent = next==='dark' ? 'Light' : 'Dark';
+    });
+
+    // Mode select
+    const modeSelect = $('modeSelect');
+    modeSelect.addEventListener('change', ()=>{
+      useFirebase = modeSelect.value === 'firebase' && firebaseConfig;
+      updateAccountBox();
+      loadAssignments();
+    });
+
+    // Simple modal-like login/signup (local or firebase)
+    const btnLogin = $('btnLogin');
+    btnLogin.addEventListener('click', ()=>showAuthBox());
+
+    function showAuthBox(){
+      const box = document.createElement('div');
+      box.style.position='fixed';box.style.left=0;box.style.top=0;box.style.right=0;box.style.bottom=0;box.style.background='rgba(0,0,0,0.4)';box.style.display='flex';box.style.alignItems='center';box.style.justifyContent='center';
+      const inner = document.createElement('div');inner.style.width='380px';inner.style.background='var(--card)';inner.style.padding='16px';inner.style.borderRadius='12px';
+      inner.innerHTML = `
+        <h3 style="margin-top:0">Login / Signup</h3>
+        <div style="margin-bottom:8px">Mode: <strong>${useFirebase?'Cloud (Firebase)':'Local (browser)'}</strong></div>
+        <input id='authEmail' placeholder='email (for cloud) or name (local)' style='margin-bottom:8px' />
+        <input id='authPass' placeholder='password (for cloud) or any (local)' style='margin-bottom:8px' />
+        <div style='display:flex;gap:8px'><button id='doLogin'>Login</button><button id='doSignup'>Signup</button><button id='closeAuth'>Close</button></div>
+      `;
+      box.appendChild(inner);document.body.appendChild(box);
+      $('closeAuth').addEventListener('click', ()=>box.remove());
+      $('doSignup').addEventListener('click', ()=>{
+        const e=$('authEmail').value.trim();const p=$('authPass').value.trim();
+        if(useFirebase){firebaseSignUp(e,p, box)}else{localSignup(e,p,box)}
+      });
+      $('doLogin').addEventListener('click', ()=>{
+        const e=$('authEmail').value.trim();const p=$('authPass').value.trim();
+        if(useFirebase){firebaseLogin(e,p, box)}else{localLogin(e,p,box)}
+      });
+    }
+
+    // ---------- Local auth (simple) ----------
+    function localSignup(name,pass,box){
+      if(!name||!pass){alert('enter both');return}
+      const users = JSON.parse(localStorage.getItem('nirma_users')||'{}');
+      if(users[name]){alert('user exists! pick another name')}
+      users[name]= {pass};
+      localStorage.setItem('nirma_users', JSON.stringify(users));
+      localStorage.setItem('nirma_session', name);
+      updateAccountBox();box.remove();loadAssignments();
+    }
+    function localLogin(name,pass,box){
+      const users = JSON.parse(localStorage.getItem('nirma_users')||'{}');
+      if(users[name] && users[name].pass===pass){localStorage.setItem('nirma_session', name);updateAccountBox();box.remove();loadAssignments();}else{alert('invalid')}
+    }
+
+    // ---------- Firebase setup (optional) ----------
+    async function initFirebase(){
+      if(!firebaseConfig) return;
+      try{
+        // load firebase SDK dynamically
+        await loadScript('https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js');
+        await loadScript('https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js');
+        await loadScript('https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js');
+        // init
+        firebaseApp = firebase.initializeApp(firebaseConfig);
+        firebaseAuth = firebase.auth();
+        firebaseStorage = firebase.storage();
+        console.log('Firebase initialized');
+      }catch(e){console.warn('Firebase init failed', e)}
+    }
+
+    function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
+
+    async function firebaseSignUp(email,pass,box){
+      try{await firebaseAuth.createUserWithEmailAndPassword(email,pass);box.remove();updateAccountBox();loadAssignments();}catch(e){alert('Signup failed: '+e.message)}
+    }
+    async function firebaseLogin(email,pass,box){
+      try{await firebaseAuth.signInWithEmailAndPassword(email,pass);box.remove();updateAccountBox();loadAssignments();}catch(e){alert('Login failed: '+e.message)}
+    }
+
+    // ---------- Upload logic (localStorage OR Firebase) ----------
+    const uploadBtn = $('uploadBtn');
+    uploadBtn.addEventListener('click', uploadAssignment);
+    $('clearBtn').addEventListener('click', ()=>{localStorage.removeItem('assignments');loadAssignments();alert('Local assignments cleared')});
+
+    async function uploadAssignment(){
+      const name = $('name').value.trim();
+      const subject = $('subjectInput').value.trim()||'Other';
+      const desc = $('desc').value.trim();
+      const fileEl = $('fileInput');
+      if(!name||fileEl.files.length===0){alert('Enter name and choose file');return}
+      const file = fileEl.files[0];
+      if(useFirebase && firebaseStorage){
+        // upload to Firebase Storage
+        const user = firebaseAuth.currentUser; if(!user){alert('You must be logged in for cloud uploads');return}
+        const path = `assignments/${user.uid}/${Date.now()}_${file.name}`;
+        const ref = firebaseStorage.ref().child(path);
+        const task = ref.put(file);
+        $('uploadProgress').textContent = 'Uploading... 0%';
+        task.on('state_changed', snap=>{
+          const p = Math.round((snap.bytesTransferred/snap.totalBytes)*100);
+          $('uploadProgress').textContent = `Uploading... ${p}%`;
+        }, err=>{alert('Upload failed: '+err.message)}, async ()=>{
+          const url = await task.snapshot.ref.getDownloadURL();
+          saveMeta({name,subject,desc,fileName:file.name,fileURL:url,storage:'firebase',owner:firebaseAuth.currentUser.email,ts:Date.now()});
+          $('uploadProgress').textContent = 'Upload complete';loadAssignments();
+        });
+      }else{
+        // local mode: store as dataURL (small files only). We will store metadata and createObjectURL for immediate download
+        const reader = new FileReader();
+        reader.onload = e=>{
+          const dataUrl = e.target.result;
+          saveMeta({name,subject,desc,fileName:file.name,fileData:dataUrl,storage:'local',owner:name,ts:Date.now()});
+          loadAssignments();alert('Saved locally — files are stored in your browser.');
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    function saveMeta(obj){
+      const arr = JSON.parse(localStorage.getItem('assignments')||'[]');
+      arr.unshift(obj);
+      localStorage.setItem('assignments', JSON.stringify(arr));
+    }
+
+    // ---------- Load & render ----------
+    function loadAssignments(){
+      const list = $('list'); list.innerHTML = '';
+      const arr = JSON.parse(localStorage.getItem('assignments')||'[]');
+      const filter = $('filterSubject').value||'all';
+      const q = $('search').value.trim().toLowerCase();
+      // fill subjects
+      const subjects = new Set(['All']); arr.forEach(a=>subjects.add(a.subject||'Other'));
+      const sel = $('filterSubject'); sel.innerHTML=''; sel.appendChild(new Option('All subjects','all'));
+      subjects.forEach(s=>{if(s!=='All') sel.appendChild(new Option(s,s))});
+
+      const filtered = arr.filter(a=>{
+        if(filter!=='all' && a.subject!==filter) return false;
+        if(q && !( (a.name||'').toLowerCase().includes(q) || (a.subject||'').toLowerCase().includes(q) || (a.fileName||'').toLowerCase().includes(q) )) return false;
+        return true;
+      });
+
+      if(filtered.length===0){list.innerHTML='<div class="small">No assignments yet.</div>';return}
+      filtered.forEach(item=>{
+        const el = document.createElement('div'); el.className='assignment';
+        const left = document.createElement('div'); left.style.flex='1';
+        left.innerHTML = `<div style="font-weight:600">${item.subject}</div><div class='meta'>${item.fileName} • by ${item.name || item.owner} • ${new Date(item.ts).toLocaleString()}</div><div class='small'>${item.desc||''}</div>`;
+        const right = document.createElement('div'); right.style.textAlign='right';
+        const download = document.createElement('a'); download.href = item.storage==='local' ? item.fileData : item.fileURL; download.textContent = 'Download'; download.setAttribute('download', item.fileName);
+        const owner = document.createElement('div'); owner.className='small'; owner.textContent = item.owner || '';
+        right.appendChild(download); right.appendChild(owner);
+        el.appendChild(left); el.appendChild(right); list.appendChild(el);
+      });
+    }
+
+    // search & filter events
+    $('search').addEventListener('input', loadAssignments);
+    $('filterSubject').addEventListener('change', loadAssignments);
+
+    // ---------- account box ----------
+    function updateAccountBox(){
+      const box = $('accountBox'); box.innerHTML='';
+      if(useFirebase && firebaseAuth){
+        const u = firebaseAuth.currentUser;
+        if(u){box.innerHTML = `<div style='font-weight:600'>${u.email}</div><div class='small'>Firebase user</div><div style='margin-top:8px'><button id='logoutBtn'>Logout</button></div>`;$('logoutBtn').addEventListener('click', ()=>{firebaseAuth.signOut();updateAccountBox();});return}
+        else{box.innerHTML = '<div class="small">Not logged in (cloud)</div>';return}
+      }
+      const local = localStorage.getItem('nirma_session');
+      if(local){box.innerHTML = `<div style='font-weight:600'>${local}</div><div class='small'>Local user</div><div style='margin-top:8px'><button id='logoutLocal'>Logout</button></div>`;$('logoutLocal').addEventListener('click', ()=>{localStorage.removeItem('nirma_session');updateAccountBox();});}
+      else{box.innerHTML = '<div class="small">Not logged in</div>'}
+    }
+
+    // ---------- init ----------
+    (async function(){
+      // init firebase only if config is provided
+      if(firebaseConfig){ await initFirebase(); useFirebase = modeSelect.value==='firebase'; }
+      updateAccountBox(); loadAssignments();
+      // if firebase is used, attach auth listener
+      if(window.firebase && window.firebase.auth){firebase.auth().onAuthStateChanged(()=>updateAccountBox())}
+    })();
+
+    // helper: example to export local assignments as JSON (for backup)
+    window.exportAssignments = ()=>{const a=localStorage.getItem('assignments')||'[]';const b=new Blob([a],{type:'application/json'});const u=URL.createObjectURL(b);const ael=document.createElement('a');ael.href=u;ael.download='assignments_backup.json';ael.click()};
+
+  </script>
+</body>
+</html>
